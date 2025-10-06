@@ -32,17 +32,53 @@ void print_matrix(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
 	}
 }
 
+typedef struct {
+	uint32_t ni;
+	uint32_t nj;
+	uint32_t nk;
+	dtype_t* correct;
+	dtype_t* C;
+	dtype_t* A;
+	dtype_t* B;
+	char* name;
+	int quiet;
+	int check;
+	void (*f)(dtype_t*, dtype_t*, dtype_t*, uint32_t, uint32_t, uint32_t);
+} EvaluationSuite;
+
+int evaluate(EvaluationSuite suite) {
+
+	// BLOCKED with packing
+	memset(suite.C, 0x00, suite.ni * suite.nj * sizeof(dtype_t));
+
+	double start = omp_get_wtime();
+	suite.f(suite.C, suite.A, suite.B, suite.ni, suite.nj, suite.nk);
+	double stop = omp_get_wtime();
+
+	if(suite.check && !check(suite.C, suite.correct, suite.ni, suite.nj)) {
+		printf("C matrix is wrong\n");
+		return 1;
+	}
+
+	if(!suite.quiet) {
+		printf("\t[%s]: %.2es\n", suite.name, stop-start);
+	}
+	return 0;
+}
+
 int main(int argc, char** argv) {
 	srand(0);
+
 	#ifdef DEBUG
-	uint32_t ni = 3;
-	uint32_t nj = 3;
-	uint32_t nk = 3;
+		uint32_t ni = 3;
+		uint32_t nj = 3;
+		uint32_t nk = 3;
 	#else
-	uint32_t ni = 1024;
-	uint32_t nj = 1024;
-	uint32_t nk = 1024;
+		uint32_t ni = 1024;
+		uint32_t nj = 1024;
+		uint32_t nk = 1024;
 	#endif
+
 	if(argc > 1 && sscanf(argv[0], "%u", &ni) != 1) {
 		error("invalid ni");
 	}
@@ -61,48 +97,34 @@ int main(int argc, char** argv) {
 	fill_matrix(A, ni, nk);
 	fill_matrix(B, nk, nj);
 
-	// NAIVE
 	memset(correct, 0x00, ni * nj * sizeof(dtype_t));
 
-	double start = omp_get_wtime();
-	gemm_rrc_naive(correct, A, B, ni, nj, nk);
-	double stop = omp_get_wtime();
+	EvaluationSuite suite = {
+		.ni = ni,
+		.nj = nj,
+		.nk = nk,
+		.correct = correct,
+		.C = correct,
+		.A = A,
+		.B = B,
+		.name = "NAIVE",
+		.check = 0,
+		.f = gemm_rrc_naive
+	};
 
-printf("GEMM\n");
-	printf("\t[NAIVE]: %.2es\n", stop-start);
+	printf("GEMM\n");
+	evaluate(suite);
+	suite.C = C;
+	suite.correct = correct;
+	suite.check = 1;
 
-	// BLOCKED without packing
+	suite.f = gemm_rrc_blocked_without_packing;
+	suite.name = "BLOCKED";
+	evaluate(suite);
 
-	memset(C, 0x00, ni * nj * sizeof(dtype_t));
-
-	start = omp_get_wtime();
-	gemm_rrc_blocked_without_packing(C, A, B, ni, nj, nk);
-	stop = omp_get_wtime();
-
-	#ifdef DEBUG
-	if(!check(C, correct, ni, nj)) {
-		printf("C matrix is wrong\n");
-		return 1;
-	}
-	#endif
-
-	printf("\t[BLOCKED]: %.2es\n", stop-start);
-
-	// BLOCKED with packing
-	memset(C, 0x00, ni * nj * sizeof(dtype_t));
-
-	start = omp_get_wtime();
-	gemm_rrc_blocked_with_packing(C, A, B, ni, nj, nk);
-	stop = omp_get_wtime();
-
-	#ifdef DEBUG
-	if(!check(C, correct, ni, nj)) {
-		printf("C matrix is wrong\n");
-		return 1;
-	}
-	#endif
-
-	printf("\t[BLOCKED|PACKING]: %.2es\n", stop-start);
+	suite.f = gemm_rrc_blocked_with_packing;
+	suite.name = "BLOCKED & PACKING";
+	evaluate(suite);
 
 	free(correct);
 	free(C);

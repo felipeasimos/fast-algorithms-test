@@ -1,5 +1,8 @@
 #include <stdint.h>
 #include <string.h>
+#include <omp.h>
+#include<immintrin.h>
+
 #include "cpu/cpu_gemm.h"
 
 #define MIN(a, b) a < b ? a : b;
@@ -72,6 +75,50 @@ void gemm_rrc_blocked_with_packing(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t 
 						for(uint32_t ik = 0; ik < K; ik++) {
 							// B is column major, so this is k row and j column
 							C[(bi + ii) * nj + (bj + ij)] += block_a[ii * K + ik] * block_b[ik + ij * K];
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+void gemm_rrc_blocked_with_packing_and_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+	// uint8_t n_avx = 32 / sizeof(dtype_t);
+	// C is row major
+	// A is row major
+	// B is column major
+	dtype_t block_a[BLOCKSIZE * BLOCKSIZE];
+	dtype_t block_b[BLOCKSIZE * BLOCKSIZE];
+
+	for(uint32_t bi = 0; bi < ni; bi += BLOCKSIZE) {
+		uint32_t I = MIN(BLOCKSIZE, ni - bi);
+		for(uint32_t bk = 0; bk < nk; bk += BLOCKSIZE) {
+			uint32_t K = MIN(BLOCKSIZE, nk - bk);
+			// --- Pack A block (row-major) ---
+			for(uint32_t ii = 0; ii < I; ii++) {
+				memcpy(&block_a[ii * K], &A[(bi + ii) * nk + bk], K * sizeof(dtype_t));
+			}
+			for(uint32_t bj = 0; bj < nj; bj += BLOCKSIZE) {
+				uint32_t J = MIN(BLOCKSIZE, nj - bj);
+				// --- Pack B block (column-major) ---
+				for(uint32_t ij = 0; ij < J; ij++) {
+					memcpy(&block_b[ij * K], &B[bk + (bj + ij) * nk], K * sizeof(dtype_t));
+				}
+				for(uint32_t ii = 0; ii < I; ii++) {
+					for(uint32_t ij = 0; ij < J; ij++) {
+						for(uint32_t ik = 0; ik < K; ik++) {
+							// B is column major, so this is k row and j column
+							C[(bi + ii) * nj + (bj + ij)] += block_a[ii * K + ik] * block_b[ik + ij * K];
+							// uint64_t i;
+							// for ( i=0; i<=ni-n_avx; i+=n_avx ){
+							// 	__m256 xv = _mm256_loadu_ps(&(A[k][i]));
+							// 	__m256 yv = _mm256_loadu_ps(&(C[j][i]));
+							// 	__m256 av = _mm256_set1_ps(B[k][j]);
+							// 	yv = _mm256_fmadd_ps(av,xv,yv);
+							// 	_mm256_storeu_ps(&(C[j][i]), yv);
+							// }
+							// for (; i < ni; i++)  C[j][i] += B[k][j]*A[k][i];    
 						}
 					}
 				}
