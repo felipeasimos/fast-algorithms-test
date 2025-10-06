@@ -32,6 +32,28 @@ void print_matrix(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
 	}
 }
 
+dtype_t* convert_row_major_to_column_major(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
+	dtype_t* m_new = malloc(sizeof(dtype_t) * n_rows * n_columns);
+	for(uint32_t i = 0; i < n_rows; i++) {
+		for(uint32_t j = 0; j < n_columns; j++) {
+			m_new[j * n_rows + i] = m[i * n_columns + j]; 
+		}
+	}
+	free(m);
+	return m_new;
+}
+
+dtype_t* convert_column_major_to_row_major(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
+	dtype_t* m_new = malloc(sizeof(dtype_t) * n_rows * n_columns);
+	for(uint32_t i = 0; i < n_rows; i++) {
+		for(uint32_t j = 0; j < n_columns; j++) {
+			m_new[i * n_columns + j] = m[j * n_rows + i]; 
+		}
+	}
+	free(m);
+	return m_new;
+}
+
 typedef struct {
 	uint32_t ni;
 	uint32_t nj;
@@ -70,9 +92,9 @@ int main(int argc, char** argv) {
 	srand(0);
 
 	#ifdef DEBUG
-		uint32_t ni = 3;
-		uint32_t nj = 3;
-		uint32_t nk = 3;
+		uint32_t ni = 16;
+		uint32_t nj = 16;
+		uint32_t nk = 16;
 	#else
 		uint32_t ni = 1024;
 		uint32_t nj = 1024;
@@ -116,7 +138,9 @@ int main(int argc, char** argv) {
 	evaluate(suite);
 	suite.C = C;
 	suite.correct = correct;
+	#ifdef DEBUG
 	suite.check = 1;
+	#endif
 
 	suite.f = gemm_rrc_blocked_without_packing;
 	suite.name = "BLOCKED";
@@ -125,6 +149,12 @@ int main(int argc, char** argv) {
 	suite.f = gemm_rrc_blocked_with_packing;
 	suite.name = "BLOCKED & PACKING";
 	evaluate(suite);
+
+	suite.f = gemm_rrr_blocked_with_packing_and_avx;
+	suite.name = "BLOCKED & PACKING & AVX (RRR)";
+	suite.B = convert_column_major_to_row_major(suite.B, nk, nj);
+	evaluate(suite);
+	suite.B = convert_row_major_to_column_major(suite.B, nk, nj);
 
 	free(correct);
 	free(C);
