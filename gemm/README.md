@@ -15,15 +15,17 @@ A is (ni, nk)
 B is (nk, nj)
 ```
 
-### GEMM AVX
+### GEMM Blocked with AVX (single-thread)
 
-The majors matter a lot when trying to vectorize. The optimal solution is to avoid having to reduce vectors to a single scalars (reduction to get the sum).
+The majors matter a lot when trying to vectorize since we need contigous memory operate on. The optimal solution is to avoid having to reduce vectors to a single scalars (reduction to get the sum), by partially computing elements of C.
 
-* However, This is only possible if we partially compute multiple elements of C at the same time:
-   * Works great! no reductions:
-      * CCR/CCC: vectorize an A column, use a scalar from B and partially compute a column of C
-      * RCR/RRR: get an A scalar, vectorize a B row and partially compute a row of C
-   * needs reduction, completely compute a C element at once:
-      * CRC/RRC: vectorize an A row and a B column, get C result by summing up the elements in the resulting vector
-   * don't vectorize well:
-      * CRR/RCC: A rows don't map to B columns. We also cannot map a partial computation (A rows or B columns) to a C vector using avx
+A subtle point is that A and B share the `nk` dimension, so that is what we iterate over at the innermost loop. This means that optimally `A` iterate over columns and `B` over rows.
+
+1. With blocked gemm, with blocksize at the size of a cache line, we have total control of the memory major of our blocks while optimizing cache access during packing.
+2. `C` is not usually packed, so we have to choose the memory layout around it:
+   * RRR: broadcast A, vectorize a B row and partially compute a row of C
+   * CCR: vectorize an A column, broadcast B and partially compute a column of C
+
+### GEMM Blocked with OMP with AVX
+
+* reduction is now better since output space is not shared between threads

@@ -92,9 +92,9 @@ int main(int argc, char** argv) {
 	srand(0);
 
 	#ifdef DEBUG
-		uint32_t ni = 16;
-		uint32_t nj = 16;
-		uint32_t nk = 16;
+		uint32_t ni = 3;
+		uint32_t nj = 3;
+		uint32_t nk = 3;
 	#else
 		uint32_t ni = 1024;
 		uint32_t nj = 1024;
@@ -150,11 +150,13 @@ int main(int argc, char** argv) {
 	suite.name = "BLOCKED & PACKING";
 	evaluate(suite);
 
-	suite.f = gemm_rrr_blocked_with_packing_and_avx;
-	suite.name = "BLOCKED & PACKING & AVX (RRR)";
-	suite.B = convert_column_major_to_row_major(suite.B, nk, nj);
+	suite.f = gemm_rrc_blocked_with_packing_and_avx;
+	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR blocks)";
 	evaluate(suite);
-	suite.B = convert_row_major_to_column_major(suite.B, nk, nj);
+
+	suite.f = gemm_rrc_blocked_with_packing_omp_and_avx;
+	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR blocks) & OMP";
+	evaluate(suite);
 
 	free(correct);
 	free(C);
