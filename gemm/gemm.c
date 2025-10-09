@@ -111,35 +111,30 @@ int main(int argc, char** argv) {
 		error("invalid nk");
 	}
 
-	dtype_t* correct = malloc(ni * nj * sizeof(dtype_t));
-	dtype_t* C = malloc(ni * nj * sizeof(dtype_t));
-	dtype_t* A = malloc(ni * nk * sizeof(dtype_t));
-	dtype_t* B = malloc(nk * nj * sizeof(dtype_t));
-
-	fill_matrix(A, ni, nk);
-	fill_matrix(B, nk, nj);
-
-	memset(correct, 0x00, ni * nj * sizeof(dtype_t));
-
 	EvaluationSuite suite = {
 		.ni = ni,
 		.nj = nj,
 		.nk = nk,
-		.correct = correct,
-		.C = correct,
-		.A = A,
-		.B = B,
+		.correct = malloc(ni * nj * sizeof(dtype_t)),
+		.C = NULL,
+		.A = malloc(ni * nk * sizeof(dtype_t)),
+		.B = malloc(nk * nj * sizeof(dtype_t)),
 		.name = "NAIVE",
 		.check = 0,
 		.f = gemm_rrc_naive
 	};
+	suite.C = suite.correct;
+
+	fill_matrix(suite.A, ni, nk);
+	fill_matrix(suite.B, nk, nj);
+
+	memset(suite.correct, 0x00, ni * nj * sizeof(dtype_t));
 
 	printf("GEMM\n");
 	if(evaluate(suite)) {
 		goto defer;
 	}
-	suite.C = C;
-	suite.correct = correct;
+	suite.C = malloc(ni * nj * sizeof(dtype_t));
 	#ifdef DEBUG
 	suite.check = 1;
 	#endif
@@ -168,9 +163,6 @@ int main(int argc, char** argv) {
 	suite.A = convert_column_major_to_row_major(suite.A, ni, nk);
 	suite.B = convert_row_major_to_column_major(suite.B, nk, nj);
 
-#ifdef DEBUG
-	printf("All checks passed!\n");
-#endif
 defer:
 	// #ifdef DEBUG
 	// printf("correct:\n");
@@ -178,8 +170,8 @@ defer:
 	// printf("C:\n");
 	// print_matrix(C, ni, nj);
 	// #endif
-	free(correct);
-	free(C);
-	free(A);
-	free(B);
+	free(suite.correct);
+	free(suite.C);
+	free(suite.A);
+	free(suite.B);
 }
