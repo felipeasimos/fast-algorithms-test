@@ -25,6 +25,7 @@ A subtle point is that A and B share the `nk` dimension, so that is what we iter
 2. `C` is not usually packed, so we have to choose the memory layout around it:
    * RRR: broadcast A, vectorize a B row and partially compute a row of C
    * CCR: vectorize an A column, broadcast B and partially compute a column of C
+      * faster, iterate over `k` in the innermost loop for B and A
 
 ### GEMM Blocked with OMP with AVX
 

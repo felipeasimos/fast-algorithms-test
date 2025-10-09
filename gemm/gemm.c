@@ -92,9 +92,9 @@ int main(int argc, char** argv) {
 	srand(0);
 
 	#ifdef DEBUG
-		uint32_t ni = 3;
-		uint32_t nj = 3;
-		uint32_t nk = 3;
+		uint32_t ni = 129;
+		uint32_t nj = 129;
+		uint32_t nk = 129;
 	#else
 		uint32_t ni = 1024;
 		uint32_t nj = 1024;
@@ -135,7 +135,9 @@ int main(int argc, char** argv) {
 	};
 
 	printf("GEMM\n");
-	evaluate(suite);
+	if(evaluate(suite)) {
+		goto defer;
+	}
 	suite.C = C;
 	suite.correct = correct;
 	#ifdef DEBUG
@@ -144,20 +146,38 @@ int main(int argc, char** argv) {
 
 	suite.f = gemm_rrc_blocked_without_packing;
 	suite.name = "BLOCKED";
-	evaluate(suite);
+	if(evaluate(suite)) {
+		goto defer;
+	}
 
 	suite.f = gemm_rrc_blocked_with_packing;
 	suite.name = "BLOCKED & PACKING";
-	evaluate(suite);
+	if(evaluate(suite)) {
+		goto defer;
+	}
 
-	suite.f = gemm_rrc_blocked_with_packing_and_avx;
-	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR blocks)";
-	evaluate(suite);
+	suite.f = gemm_ccr_blocked_with_packing_and_avx;
+	suite.name = "BLOCKED & PACKING & AVX (CCR)";
+	suite.correct = convert_row_major_to_column_major(suite.correct, ni, nj);
+	suite.A = convert_row_major_to_column_major(suite.A, ni, nk);
+	suite.B = convert_column_major_to_row_major(suite.B, nk, nj);
+	if(evaluate(suite)) {
+		goto defer;
+	}
+	suite.correct = convert_column_major_to_row_major(suite.correct, ni, nj);
+	suite.A = convert_column_major_to_row_major(suite.A, ni, nk);
+	suite.B = convert_row_major_to_column_major(suite.B, nk, nj);
 
-	suite.f = gemm_rrc_blocked_with_packing_omp_and_avx;
-	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR blocks) & OMP";
-	evaluate(suite);
-
+#ifdef DEBUG
+	printf("All checks passed!\n");
+#endif
+defer:
+	// #ifdef DEBUG
+	// printf("correct:\n");
+	// print_matrix(correct, ni, nj);
+	// printf("C:\n");
+	// print_matrix(C, ni, nj);
+	// #endif
 	free(correct);
 	free(C);
 	free(A);
