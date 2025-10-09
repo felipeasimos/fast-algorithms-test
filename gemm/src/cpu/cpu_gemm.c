@@ -5,8 +5,8 @@
 
 #include "cpu/cpu_gemm.h"
 
-#define MIN(a, b) a < b ? a : b;
-#define MAX(a, b) a < b ? b : a;
+#define MIN(a, b) (a < b ? a : b);
+#define MAX(a, b) (a < b ? b : a);
 
 #define BLOCKSIZE 64
 
@@ -112,17 +112,61 @@ void gemm_ccr_blocked_with_packing_and_avx(dtype_t* C, dtype_t* A, dtype_t* B, u
 				for(uint32_t ij = 0; ij < J; ij++) {
 					for(uint32_t ik = 0; ik < K; ik++) {
 						uint64_t ii = 0;
-						if(I > n_avx) {
-							for ( ii = 0; ii <= I - n_avx; ii += n_avx ){
-								uint32_t c_index = (bj + ij) * nj + (bi + ii);
-								__m256 a_vec = _mm256_loadu_ps(&block_a[ik * I + ii]);
-								__m256 b_scalar = _mm256_set1_ps(block_b[ik * J + ij]);
-								__m256 c_vec = _mm256_loadu_ps(&C[c_index]);
-								c_vec = _mm256_fmadd_ps(a_vec, b_scalar, c_vec);
-								_mm256_storeu_ps(&C[c_index], c_vec);
-							}
+						uint32_t aligned_I = I > n_avx ? I - n_avx + 1 : 0;
+						for ( ii = 0; ii < aligned_I; ii += n_avx ){
+							uint32_t c_index = (bj + ij) * nj + (bi + ii);
+							__m256 a_vec = _mm256_loadu_ps(&block_a[ik * I + ii]);
+							__m256 b_scalar = _mm256_set1_ps(block_b[ik * J + ij]);
+							__m256 c_vec = _mm256_loadu_ps(&C[c_index]);
+							c_vec = _mm256_fmadd_ps(a_vec, b_scalar, c_vec);
+							_mm256_storeu_ps(&C[c_index], c_vec);
 						}
 						for (; ii < I; ii++) C[(bj + ij) * nj + (bi + ii)] += block_b[ik * J + ij] * block_a[ik * I + ii];
+					}
+				}
+			}
+		}
+	}
+	free(block_a);
+	free(block_b);
+}
+
+void gemm_rrc_blocked_with_packing_and_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+	// C is (ni, nj)
+	// A is (ni, nk)
+	// B is (nk, nj)
+	uint8_t n_avx = 32 / sizeof(dtype_t);
+	dtype_t* block_a = malloc(sizeof(dtype_t) * BLOCKSIZE * BLOCKSIZE);
+	dtype_t* block_b = malloc(sizeof(dtype_t) * BLOCKSIZE * BLOCKSIZE);
+	for(uint32_t bi = 0; bi < ni; bi += BLOCKSIZE) {
+		uint32_t I = MIN(BLOCKSIZE, ni - bi);
+		for(uint32_t bk = 0; bk < nk; bk += BLOCKSIZE) {
+			uint32_t K = MIN(BLOCKSIZE, nk - bk);
+			// --- Pack A block (maintaining row-major) ---
+			for(uint32_t ii = 0; ii < I; ii++) {
+				memcpy(&block_a[ii * K], &A[(bi + ii) * nk + bk], K * sizeof(dtype_t));
+			}
+			for(uint32_t bj = 0; bj < nj; bj += BLOCKSIZE) {
+				uint32_t J = MIN(BLOCKSIZE, nj - bj);
+				// --- Pack B block (converting to row-major) ---
+				for(uint32_t ik = 0; ik < K; ik++) {
+					for(uint32_t ij = 0; ij < J; ij++) {
+						block_b[ik * J + ij] = B[(bj + ij) * nk + (bk + ik)];
+					}
+				}
+				for(uint32_t ij = 0; ij < J; ij++) {
+					for (uint32_t ii = 0; ii < I; ii ++){
+						uint64_t ik = 0;
+						uint32_t aligned_K = K > n_avx ? K - n_avx + 1 : 0;
+						uint32_t c_index = (bi + ii) * nj + (bj + ij);
+						// for(uint32_t ik = 0; ik < aligned_K; ik += n_avx) {
+						// 	__m256 a_scalar = _mm256_set1_ps(block_a[ii * K + ik]);
+						// 	__m256 b_vec = _mm256_loadu_ps(&block_b[ik * J + ij]);
+						// 	__m256 c_vec = _mm256_loadu_ps(&C[c_index]);
+						// 	c_vec = _mm256_fmadd_ps(a_scalar, b_vec, c_vec);
+						// 	_mm256_storeu_ps(&C[c_index], c_vec);
+						// }
+						for (; ik < K; ik++) C[(bi + ii) * nj + (bj + ij)] += block_b[ik * J + ij] * block_a[ii * K + ik];
 					}
 				}
 			}

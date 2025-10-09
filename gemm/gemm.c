@@ -78,7 +78,7 @@ int evaluate(EvaluationSuite suite) {
 	double stop = omp_get_wtime();
 
 	if(suite.check && !check(suite.C, suite.correct, suite.ni, suite.nj)) {
-		printf("C matrix is wrong\n");
+		printf("C matrix is wrong for [%s]\n", suite.name);
 		return 1;
 	}
 
@@ -135,9 +135,7 @@ int main(int argc, char** argv) {
 		goto defer;
 	}
 	suite.C = malloc(ni * nj * sizeof(dtype_t));
-	#ifdef DEBUG
 	suite.check = 1;
-	#endif
 
 	suite.f = gemm_rrc_blocked_without_packing;
 	suite.name = "BLOCKED";
@@ -162,6 +160,12 @@ int main(int argc, char** argv) {
 	suite.correct = convert_column_major_to_row_major(suite.correct, ni, nj);
 	suite.A = convert_column_major_to_row_major(suite.A, ni, nk);
 	suite.B = convert_row_major_to_column_major(suite.B, nk, nj);
+
+	suite.f = gemm_rrc_blocked_with_packing_and_avx;
+	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR packing)";
+	if(evaluate(suite)) {
+		goto defer;
+	}
 
 defer:
 	// #ifdef DEBUG
