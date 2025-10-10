@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <omp.h>
+#include <math.h>
 
 #define error(msg) fprintf(stderr, "%s(%u): %s", __FILE__, __LINE__, msg);
 
@@ -17,11 +18,11 @@ void fill_matrix(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
 int check(dtype_t* c, dtype_t* correct, uint32_t n_rows, uint32_t n_columns) {
 	uint32_t len = n_rows * n_columns;
 	for(uint32_t i = 0; i < len; i++) {
-		if(c[i] != correct[i]) {
-			return 0;
+		if(fabs(c[i] - correct[i]) > 0.001) {
+			return i;
 		}
 	}
-	return 1;
+	return 0;
 }
 
 void print_matrix(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
@@ -33,26 +34,37 @@ void print_matrix(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
 	}
 }
 
-dtype_t* convert_row_major_to_column_major(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
+void convert_row_major_to_column_major(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
 	dtype_t* m_new = malloc(sizeof(dtype_t) * n_rows * n_columns);
 	for(uint32_t i = 0; i < n_rows; i++) {
 		for(uint32_t j = 0; j < n_columns; j++) {
 			m_new[j * n_rows + i] = m[i * n_columns + j]; 
 		}
 	}
-	free(m);
-	return m_new;
+	for(uint32_t i = 0; i < n_rows; i++) {
+		for(uint32_t j = 0; j < n_columns; j++) {
+			uint32_t index = j * n_rows + i;
+			m[index] = m_new[index]; 
+		}
+	}
+	free(m_new);
 }
 
-dtype_t* convert_column_major_to_row_major(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
+void convert_column_major_to_row_major(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
+
 	dtype_t* m_new = malloc(sizeof(dtype_t) * n_rows * n_columns);
 	for(uint32_t i = 0; i < n_rows; i++) {
 		for(uint32_t j = 0; j < n_columns; j++) {
 			m_new[i * n_columns + j] = m[j * n_rows + i]; 
 		}
 	}
-	free(m);
-	return m_new;
+	for(uint32_t i = 0; i < n_rows; i++) {
+		for(uint32_t j = 0; j < n_columns; j++) {
+			uint32_t index = i * n_columns + j;
+			m[index] = m_new[index]; 
+		}
+	}
+	free(m_new);
 }
 
 typedef struct {
@@ -69,23 +81,148 @@ typedef struct {
 	void (*f)(dtype_t*, dtype_t*, dtype_t*, uint32_t, uint32_t, uint32_t);
 } EvaluationSuite;
 
-int evaluate(EvaluationSuite suite) {
+int evaluate(EvaluationSuite suite, double* time) {
 
 	memset(suite.C, 0x00, suite.ni * suite.nj * sizeof(dtype_t));
 
 	double start = omp_get_wtime();
 	suite.f(suite.C, suite.A, suite.B, suite.ni, suite.nj, suite.nk);
 	double stop = omp_get_wtime();
+	*time = stop - start;
 
-	if(suite.check && !check(suite.C, suite.correct, suite.ni, suite.nj)) {
-		printf("C matrix is wrong for [%s]\n", suite.name);
+	int error_index = 0;
+	if(suite.check && (error_index = check(suite.C, suite.correct, suite.ni, suite.nj))) {
+		printf("C matrix is wrong for [%s]: correct[%u] != C[%u] (%f != %f)\n", suite.name, error_index, error_index, suite.correct[error_index], suite.C[error_index]);
 		return 1;
 	}
 
 	if(!suite.quiet) {
-		printf("\t[%s]: %.2es\n", suite.name, stop-start);
+		printf("\t[%s]: %.2es\n", suite.name, *time);
 	}
 	return 0;
+}
+
+EvaluationSuite createSuite(uint32_t ni, uint32_t nj, uint32_t nk, int check) {	
+	EvaluationSuite suite = {
+		.ni = ni,
+		.nj = nj,
+		.nk = nk,
+		.correct = malloc(ni * nj * sizeof(dtype_t)),
+		.C = NULL,
+		.A = malloc(ni * nk * sizeof(dtype_t)),
+		.B = malloc(nk * nj * sizeof(dtype_t)),
+		.name = "NAIVE",
+		.check = 0,
+		.f = gemm_rrc_naive
+	};
+	fill_matrix(suite.A, ni, nk);
+	fill_matrix(suite.B, nk, nj);
+
+	suite.C = suite.correct;
+	memset(suite.correct, 0x00, ni * nj * sizeof(dtype_t));
+
+	if(check) {
+		double tmp;
+		evaluate(suite, &tmp);
+	}
+	suite.check = check;
+	suite.C = malloc(ni * nj * sizeof(dtype_t));
+	return suite;
+}
+
+void freeSuite(EvaluationSuite suite) {
+	free(suite.correct);
+	free(suite.C);
+	free(suite.A);
+	free(suite.B);
+}
+
+int createPlotRow(EvaluationSuite suite, FILE* file) {
+
+	double time = 0.0F;
+
+	suite.f = gemm_rrc_blocked_without_packing;
+	suite.name = "BLOCKED";
+	if(evaluate(suite, &time)) {
+		goto defer;
+	}
+	fprintf(file, "%.2es,", time);
+
+	suite.f = gemm_rrc_blocked;
+	suite.name = "BLOCKED & PACKING";
+	if(evaluate(suite, &time)) {
+		goto defer;
+	}
+	fprintf(file, "%.2es,", time);
+
+	suite.f = gemm_ccr_blocked_avx;
+	suite.name = "BLOCKED & PACKING & AVX (CCR)";
+	convert_row_major_to_column_major(suite.correct, suite.ni, suite.nj);
+	convert_row_major_to_column_major(suite.A, suite.ni, suite.nk);
+	convert_column_major_to_row_major(suite.B, suite.nk, suite.nj);
+	if(evaluate(suite, &time)) {
+		goto defer;
+	}
+	convert_column_major_to_row_major(suite.correct, suite.ni, suite.nj);
+	convert_column_major_to_row_major(suite.A, suite.ni, suite.nk);
+	convert_row_major_to_column_major(suite.B, suite.nk, suite.nj);
+	fprintf(file, "%.2es,", time);
+
+	suite.f = gemm_rrc_to_rrr_blocked_avx;
+	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR packing)";
+	if(evaluate(suite, &time)) {
+		goto defer;
+	}
+	fprintf(file, "%.2es,", time);
+
+	suite.f = gemm_rrc_blocked_avx;
+	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction)";
+	if(evaluate(suite, &time)) {
+		goto defer;
+	}
+	fprintf(file, "%.2es,", time);
+
+	suite.f = gemm_rrc_blocked_avx_and_omp;
+	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction) & OMP";
+	if(evaluate(suite, &time)) {
+		goto defer;
+	}
+	fprintf(file, "%.2es\n", time);
+
+	return 0;
+defer:
+	return 1;
+}
+
+int createPlot(char* output_path) {
+	FILE* f = NULL;
+	EvaluationSuite suite = {0};
+	if((f = fopen(output_path, "w")) == NULL) {
+		error("Error when opening file\n");
+		goto defer;
+	}
+	fprintf(f, "N,BLOCKED,BLOCKED & PACKING,BLOCKED & PACKING & AVX (CCR),BLOCKED & PACKING & AVX (RRC to RRR packing),BLOCKED & PACKING & AVX (RRC with reduction),BLOCKED & PACKING & AVX (RRC with reduction) & OMP");
+	#ifdef DEBUG
+	int check = 1;
+	#else
+	int check = 0;
+	#endif
+	for(uint32_t n = 1; n < 5000; n+=100) {
+		suite = createSuite(n, n, n, check);
+		fprintf(f, "%u,", n);
+		if(createPlotRow(suite, f)) {
+			error("Error when creating row\n");
+			goto defer;
+		}
+		freeSuite(suite);
+		fflush(f);
+	}
+	fclose(f);
+
+	return 0;
+defer:
+	freeSuite(suite);
+	return 1;
 }
 
 int main(int argc, char** argv) {
@@ -111,83 +248,5 @@ int main(int argc, char** argv) {
 		error("invalid nk");
 	}
 
-	EvaluationSuite suite = {
-		.ni = ni,
-		.nj = nj,
-		.nk = nk,
-		.correct = malloc(ni * nj * sizeof(dtype_t)),
-		.C = NULL,
-		.A = malloc(ni * nk * sizeof(dtype_t)),
-		.B = malloc(nk * nj * sizeof(dtype_t)),
-		.name = "NAIVE",
-		.check = 0,
-		.f = gemm_rrc_naive
-	};
-	suite.C = suite.correct;
-
-	fill_matrix(suite.A, ni, nk);
-	fill_matrix(suite.B, nk, nj);
-
-	memset(suite.correct, 0x00, ni * nj * sizeof(dtype_t));
-
-	printf("GEMM\n");
-	if(evaluate(suite)) {
-		goto defer;
-	}
-	suite.C = malloc(ni * nj * sizeof(dtype_t));
-	suite.check = 1;
-
-	suite.f = gemm_rrc_blocked_without_packing;
-	suite.name = "BLOCKED";
-	if(evaluate(suite)) {
-		goto defer;
-	}
-
-	suite.f = gemm_rrc_blocked;
-	suite.name = "BLOCKED & PACKING";
-	if(evaluate(suite)) {
-		goto defer;
-	}
-
-	suite.f = gemm_ccr_blocked_avx;
-	suite.name = "BLOCKED & PACKING & AVX (CCR)";
-	suite.correct = convert_row_major_to_column_major(suite.correct, ni, nj);
-	suite.A = convert_row_major_to_column_major(suite.A, ni, nk);
-	suite.B = convert_column_major_to_row_major(suite.B, nk, nj);
-	if(evaluate(suite)) {
-		goto defer;
-	}
-	suite.correct = convert_column_major_to_row_major(suite.correct, ni, nj);
-	suite.A = convert_column_major_to_row_major(suite.A, ni, nk);
-	suite.B = convert_row_major_to_column_major(suite.B, nk, nj);
-
-	suite.f = gemm_rrc_to_rrr_blocked_avx;
-	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR packing)";
-	if(evaluate(suite)) {
-		goto defer;
-	}
-
-	suite.f = gemm_rrc_blocked_avx;
-	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction)";
-	if(evaluate(suite)) {
-		goto defer;
-	}
-
-	suite.f = gemm_rrc_blocked_avx_and_omp;
-	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction) & OMP";
-	if(evaluate(suite)) {
-		goto defer;
-	}
-
-defer:
-	// #ifdef DEBUG
-	// printf("correct:\n");
-	// print_matrix(correct, ni, nj);
-	// printf("C:\n");
-	// print_matrix(C, ni, nj);
-	// #endif
-	free(suite.correct);
-	free(suite.C);
-	free(suite.A);
-	free(suite.B);
+	return createPlot("plot.csv");
 }
