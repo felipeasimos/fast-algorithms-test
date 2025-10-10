@@ -11,5 +11,6 @@ void gemm_rrc_blocked(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t 
 void gemm_ccr_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk);
 void gemm_rrc_to_rrr_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk);
 void gemm_rrc_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk);
+void gemm_rrc_blocked_avx_and_omp(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk);
 
 #endif

@@ -229,3 +229,63 @@ void gemm_rrc_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint3
 	free(block_a);
 	free(block_b);
 }
+
+
+void gemm_rrc_blocked_avx_and_omp(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+	// C is (ni, nj)
+	// A is (ni, nk)
+	// B is (nk, nj)
+	uint8_t n_avx = 32 / sizeof(dtype_t);
+
+	#pragma omp parallel
+	{
+		dtype_t* block_a = malloc(sizeof(dtype_t) * BLOCKSIZE * BLOCKSIZE);
+		dtype_t* block_b = malloc(sizeof(dtype_t) * BLOCKSIZE * BLOCKSIZE);
+		#pragma omp for
+		for(uint32_t bi = 0; bi < ni; bi += BLOCKSIZE) {
+			uint32_t I = MIN(BLOCKSIZE, ni - bi);
+			for(uint32_t bk = 0; bk < nk; bk += BLOCKSIZE) {
+				uint32_t K = MIN(BLOCKSIZE, nk - bk);
+				// --- Pack A block (maintaining row-major) ---
+				for(uint32_t ii = 0; ii < I; ii++) {
+					memcpy(&block_a[ii * K], &A[(bi + ii) * nk + bk], K * sizeof(dtype_t));
+				}
+				for(uint32_t bj = 0; bj < nj; bj += BLOCKSIZE) {
+					uint32_t J = MIN(BLOCKSIZE, nj - bj);
+					// --- Pack B block (maintain to column-major) ---
+					for(uint32_t ij = 0; ij < J; ij++) {
+						memcpy(&block_b[ij * K], &B[(bj + ij) * nk + bk], K * sizeof(dtype_t));
+					}
+					for (uint32_t ii = 0; ii < I; ii++){
+						for(uint32_t ij = 0; ij < J; ij++) {
+							uint64_t ik = 0;
+							uint32_t c_index = (bi + ii) * nj + (bj + ij);
+
+							uint32_t aligned_K = K > n_avx ? K - n_avx + 1 : 0;
+							__m256 acc = _mm256_setzero_ps();
+							for(ik = 0; ik < aligned_K; ik += n_avx) {
+								__m256 a_vec = _mm256_loadu_ps(&block_a[ii * K + ik]);
+								__m256 b_vec = _mm256_loadu_ps(&block_b[ij * K + ik]);
+								acc = _mm256_fmadd_ps(a_vec, b_vec, acc);
+							}
+
+							__m128 t1 = _mm256_castps256_ps128(acc);
+							__m128 t2 = _mm256_extractf128_ps(acc, 1);
+							t1 = _mm_add_ps(t1, t2); // [r0+r4 (v0), r1+r5 (v1), r2+r6 (v2), r3+r7 (v3)]
+							t2 = _mm_movehl_ps(t1, t1); // [v2, v3, ?, ?]
+							t1 = _mm_add_ps(t1, t2); // [v0+v2, v1+v3, ?, ?]
+							t2 = _mm_shuffle_ps(t1, t1, 0x1); // [v1+v3, ?, ?, ?]
+							t1 = _mm_add_ss(t1, t2); // [v0+v1+v2+v3, ?, ?, ?]
+							float sum = _mm_cvtss_f32(t1); // cast first item of vector to f32
+
+							for (; ik < K; ik++) sum += block_b[ij * K + ik] * block_a[ii * K + ik];
+							C[c_index] += sum;
+						}
+					}
+				}
+			}
+		}
+		free(block_a);
+		free(block_b);
+	}
+}

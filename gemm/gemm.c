@@ -9,7 +9,8 @@
 void fill_matrix(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
 	uint32_t len = n_rows * n_columns;
 	for(uint32_t i = 0; i < len; i++) {
-		m[i] = rand() & 1;
+		// avoid numeric errors
+		m[i] = rand() & 1 ? 0.5 : 1;
 	}
 }
 
@@ -95,9 +96,9 @@ int main(int argc, char** argv) {
 		uint32_t nj = 129;
 		uint32_t nk = 129;
 	#else
-		uint32_t ni = 1024;
-		uint32_t nj = 1024;
-		uint32_t nk = 1024;
+		uint32_t ni = 1028;
+		uint32_t nj = 1028;
+		uint32_t nk = 1028;
 	#endif
 
 	if(argc > 1 && sscanf(argv[0], "%u", &ni) != 1) {
@@ -168,6 +169,12 @@ int main(int argc, char** argv) {
 
 	suite.f = gemm_rrc_blocked_avx;
 	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction)";
+	if(evaluate(suite)) {
+		goto defer;
+	}
+
+	suite.f = gemm_rrc_blocked_avx_and_omp;
+	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction) & OMP";
 	if(evaluate(suite)) {
 		goto defer;
 	}
