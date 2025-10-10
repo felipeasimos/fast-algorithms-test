@@ -176,6 +176,7 @@ void gemm_rrc_to_rrr_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni
 	free(block_b);
 }
 
+#include<stdio.h>
 void gemm_rrc_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is (ni, nj)
 	// A is (ni, nk)
@@ -197,24 +198,30 @@ void gemm_rrc_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint3
 				for(uint32_t ij = 0; ij < J; ij++) {
 					memcpy(&block_b[ij * K], &B[(bj + ij) * nk + bk], K * sizeof(dtype_t));
 				}
-				for (uint32_t ii = 0; ii < I; ii ++){
+				for (uint32_t ii = 0; ii < I; ii++){
 					for(uint32_t ij = 0; ij < J; ij++) {
 						uint64_t ik = 0;
 						uint32_t c_index = (bi + ii) * nj + (bj + ij);
-						// uint32_t aligned_K = K > n_avx ? K - n_avx + 1 : 0;
-						// __m256 acc = _mm256_setzero_ps();
-						// for(ik = 0; ik < aligned_K; ik += n_avx) {
-						// 	__m256 a_vec = _mm256_loadu_ps(&block_a[ii * K + ik]);
-						// 	__m256 b_vec = _mm256_loadu_ps(&block_b[ij * K + ik]);
-						// 	acc = _mm256_fmadd_ps(a_vec, b_vec, acc);
-						// }
-						// __m128 low  = _mm256_castps256_ps128(acc);
-						// __m128 high = _mm256_extractf128_ps(acc, 1);
-						// __m128 sum  = _mm_add_ps(low, high);
-						// sum = _mm_hadd_ps(sum, sum);
-						// sum = _mm_hadd_ps(sum, sum);
-						// C[c_index] += _mm_cvtss_f32(sum);
-						for (; ik < K; ik++) C[c_index] += block_b[ij * K + ik] * block_a[ii * K + ik];
+
+						uint32_t aligned_K = K > n_avx ? K - n_avx + 1 : 0;
+						__m256 acc = _mm256_setzero_ps();
+						for(ik = 0; ik < aligned_K; ik += n_avx) {
+							__m256 a_vec = _mm256_loadu_ps(&block_a[ii * K + ik]);
+							__m256 b_vec = _mm256_loadu_ps(&block_b[ij * K + ik]);
+							acc = _mm256_fmadd_ps(a_vec, b_vec, acc);
+						}
+
+						__m128 t1 = _mm256_castps256_ps128(acc);
+						__m128 t2 = _mm256_extractf128_ps(acc, 1);
+						t1 = _mm_add_ps(t1, t2);
+						t2 = _mm_movehl_ps(t1, t1);
+						t1 = _mm_add_ps(t1, t2);
+						t2 = _mm_shuffle_ps(t1, t1, 0x1);
+						t1 = _mm_add_ss(t1, t2);
+						float sum = _mm_cvtss_f32(t1);
+
+						for (; ik < K; ik++) sum += block_b[ij * K + ik] * block_a[ii * K + ik];
+						C[c_index] += sum;
 					}
 				}
 			}

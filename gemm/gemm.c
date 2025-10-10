@@ -9,7 +9,7 @@
 void fill_matrix(dtype_t* m, uint32_t n_rows, uint32_t n_columns) {
 	uint32_t len = n_rows * n_columns;
 	for(uint32_t i = 0; i < len; i++) {
-		m[i] = rand();
+		m[i] = rand() & 1;
 	}
 }
 
@@ -70,7 +70,6 @@ typedef struct {
 
 int evaluate(EvaluationSuite suite) {
 
-	// BLOCKED with packing
 	memset(suite.C, 0x00, suite.ni * suite.nj * sizeof(dtype_t));
 
 	double start = omp_get_wtime();
