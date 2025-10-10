@@ -176,7 +176,6 @@ void gemm_rrc_to_rrr_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni
 	free(block_b);
 }
 
-#include<stdio.h>
 void gemm_rrc_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is (ni, nj)
 	// A is (ni, nk)
@@ -213,12 +212,12 @@ void gemm_rrc_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint3
 
 						__m128 t1 = _mm256_castps256_ps128(acc);
 						__m128 t2 = _mm256_extractf128_ps(acc, 1);
-						t1 = _mm_add_ps(t1, t2);
-						t2 = _mm_movehl_ps(t1, t1);
-						t1 = _mm_add_ps(t1, t2);
-						t2 = _mm_shuffle_ps(t1, t1, 0x1);
-						t1 = _mm_add_ss(t1, t2);
-						float sum = _mm_cvtss_f32(t1);
+						t1 = _mm_add_ps(t1, t2); // [r0+r4 (v0), r1+r5 (v1), r2+r6 (v2), r3+r7 (v3)]
+						t2 = _mm_movehl_ps(t1, t1); // [v2, v3, ?, ?]
+						t1 = _mm_add_ps(t1, t2); // [v0+v2, v1+v3, ?, ?]
+						t2 = _mm_shuffle_ps(t1, t1, 0x1); // [v1+v3, ?, ?, ?]
+						t1 = _mm_add_ss(t1, t2); // [v0+v1+v2+v3, ?, ?, ?]
+						float sum = _mm_cvtss_f32(t1); // cast first item of vector to f32
 
 						for (; ik < K; ik++) sum += block_b[ij * K + ik] * block_a[ii * K + ik];
 						C[c_index] += sum;
