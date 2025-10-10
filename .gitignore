@@ -1,2 +1,3 @@
 **/build/
 **/*.csv
+**/compile_flags.txt
