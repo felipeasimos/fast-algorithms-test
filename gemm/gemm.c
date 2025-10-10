@@ -143,13 +143,13 @@ int main(int argc, char** argv) {
 		goto defer;
 	}
 
-	suite.f = gemm_rrc_blocked_with_packing;
+	suite.f = gemm_rrc_blocked;
 	suite.name = "BLOCKED & PACKING";
 	if(evaluate(suite)) {
 		goto defer;
 	}
 
-	suite.f = gemm_ccr_blocked_with_packing_and_avx;
+	suite.f = gemm_ccr_blocked_avx;
 	suite.name = "BLOCKED & PACKING & AVX (CCR)";
 	suite.correct = convert_row_major_to_column_major(suite.correct, ni, nj);
 	suite.A = convert_row_major_to_column_major(suite.A, ni, nk);
@@ -161,8 +161,14 @@ int main(int argc, char** argv) {
 	suite.A = convert_column_major_to_row_major(suite.A, ni, nk);
 	suite.B = convert_row_major_to_column_major(suite.B, nk, nj);
 
-	suite.f = gemm_rrc_blocked_with_packing_and_avx;
+	suite.f = gemm_rrc_to_rrr_blocked_avx;
 	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR packing)";
+	if(evaluate(suite)) {
+		goto defer;
+	}
+
+	suite.f = gemm_rrc_blocked_avx;
+	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction)";
 	if(evaluate(suite)) {
 		goto defer;
 	}
