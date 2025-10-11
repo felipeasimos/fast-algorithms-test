@@ -2,7 +2,6 @@
 #include <string.h>
 #include <omp.h>
 #include<immintrin.h>
-
 #include "cpu/cpu_gemm.h"
 
 #define MIN(a, b) (a < b ? a : b);
@@ -10,7 +9,7 @@
 
 #define BLOCKSIZE 64
 
-void gemm_rrc_naive(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+void gemm_rrc_naive(void* _, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is row major
 	// A is row major
 	// B is column major
@@ -24,7 +23,7 @@ void gemm_rrc_naive(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj
 	}
 }
 
-void gemm_rrc_blocked_without_packing(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+void gemm_rrc_blocked_without_packing(void* _, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is row major
 	// A is row major
 	// B is column major
@@ -51,7 +50,7 @@ void gemm_rrc_blocked_without_packing(dtype_t* C, dtype_t* A, dtype_t* B, uint32
 }
 
 
-void gemm_rrc_blocked(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+void gemm_rrc_blocked(void* _, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is row major
 	// A is row major
 	// B is column major
@@ -87,7 +86,7 @@ void gemm_rrc_blocked(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t 
 	free(block_b);
 }
 
-void gemm_ccr_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+void gemm_ccr_blocked_avx(void* _, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is (ni, nj)
 	// A is (ni, nk)
 	// B is (nk, nj)
@@ -131,7 +130,7 @@ void gemm_ccr_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint3
 	free(block_b);
 }
 
-void gemm_rrc_to_rrr_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+void gemm_rrc_to_rrr_blocked_avx(void* _, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is (ni, nj)
 	// A is (ni, nk)
 	// B is (nk, nj)
@@ -176,7 +175,7 @@ void gemm_rrc_to_rrr_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni
 	free(block_b);
 }
 
-void gemm_rrc_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+void gemm_rrc_blocked_avx(void* _, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is (ni, nj)
 	// A is (ni, nk)
 	// B is (nk, nj)
@@ -231,7 +230,7 @@ void gemm_rrc_blocked_avx(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint3
 }
 
 
-void gemm_rrc_blocked_avx_and_omp(dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
+void gemm_rrc_blocked_avx_and_omp(void* _, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uint32_t nj, uint32_t nk) {
 	// C is (ni, nj)
 	// A is (ni, nk)
 	// B is (nk, nj)

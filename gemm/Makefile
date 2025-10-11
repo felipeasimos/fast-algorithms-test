@@ -51,12 +51,12 @@ TESTS_FILE_EXTENSION :=c
 SRC_FILE_EXTENSION :=c
 
 # libraries to link against (without -l)
-GENERAL_LIBS :=
+GENERAL_LIBS :=wgpu_native m
 MAIN_LIBS :=
 TESTS_LIBS :=
 
 # libs location (if they are system libs, just leave it empty)
-GENERAL_LIBS_LOCATION :=
+GENERAL_LIBS_LOCATION :=./libs
 MAIN_LIBS_LOCATION :=
 TESTS_LIBS_LOCATION :=
 

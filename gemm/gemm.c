@@ -1,4 +1,6 @@
 #include "cpu/cpu_gemm.h"
+#include "gpu/gpu.h"
+#include "gpu/gpu_gemm.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,7 +80,8 @@ typedef struct {
 	char* name;
 	int quiet;
 	int check;
-	void (*f)(dtype_t*, dtype_t*, dtype_t*, uint32_t, uint32_t, uint32_t);
+	void (*f)(void*, dtype_t*, dtype_t*, dtype_t*, uint32_t, uint32_t, uint32_t);
+	GPUData gpu;
 } EvaluationSuite;
 
 int evaluate(EvaluationSuite suite, double* time) {
@@ -86,7 +89,7 @@ int evaluate(EvaluationSuite suite, double* time) {
 	memset(suite.C, 0x00, suite.ni * suite.nj * sizeof(dtype_t));
 
 	double start = omp_get_wtime();
-	suite.f(suite.C, suite.A, suite.B, suite.ni, suite.nj, suite.nk);
+	suite.f(&suite.gpu, suite.C, suite.A, suite.B, suite.ni, suite.nj, suite.nk);
 	double stop = omp_get_wtime();
 	*time = stop - start;
 
@@ -127,6 +130,7 @@ EvaluationSuite createSuite(uint32_t ni, uint32_t nj, uint32_t nk, int check) {
 	}
 	suite.check = check;
 	suite.C = malloc(ni * nj * sizeof(dtype_t));
+	suite.gpu = initGPUData();
 	return suite;
 }
 
@@ -135,6 +139,7 @@ void freeSuite(EvaluationSuite suite) {
 	free(suite.C);
 	free(suite.A);
 	free(suite.B);
+	freeGPUData(suite.gpu);
 }
 
 int createPlotRow(EvaluationSuite suite, FILE* file) {
@@ -184,6 +189,13 @@ int createPlotRow(EvaluationSuite suite, FILE* file) {
 
 	suite.f = gemm_rrc_blocked_avx_and_omp;
 	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction) & OMP";
+	if(evaluate(suite, &time)) {
+		goto defer;
+	}
+	fprintf(file, "%.2es\n", time);
+
+	suite.f = (void (*)(void *, dtype_t *, dtype_t *, dtype_t *, uint32_t, uint32_t, uint32_t))gemm_gpu;
+	suite.name = "GPU";
 	if(evaluate(suite, &time)) {
 		goto defer;
 	}

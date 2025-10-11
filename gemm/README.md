@@ -27,6 +27,16 @@ A subtle point is that A and B share the `nk` dimension, so that is what we iter
    * CCR: vectorize an A column, broadcast B and partially compute a column of C
       * faster, iterate over `k` in the innermost loop for B and A
 
-### GEMM Blocked with OMP with AVX
+### CUDA vs WebGPU
 
-* reduction is now better since output space is not shared between threads
+
+| Concept         | CUDA                                                     | WGPU (WebGPU / wgpu-native)                                 |
+| --------------- | -------------------------------------------------------- | ----------------------------------------------------------- |
+| Execution model | Grid of thread blocks, each with many threads            | Workgroups of invocations (threads)                         |
+| Language        | CUDA C (extension of C++)                                | WGSL (WebGPU Shading Language, similar to GLSL)             |
+| Launch          | `kernel<<<gridDim, blockDim>>>(args)`                    | `dispatch_workgroups(x, y, z)`                              |
+| Thread index    | `threadIdx.x + blockIdx.x * blockDim.x`                  | `@builtin(global_invocation_id)`                            |
+| Memory types    | `__global__`, `__shared__`, `__device__`, `__constant__` | Storage buffers, workgroup memory, uniforms                 |
+| Synchronization | `__syncthreads()`                                        | `workgroupBarrier()`                                        |
+| Host side       | CUDA runtime API (cudaMalloc, cudaMemcpy, etc.)          | wgpu API for creating buffers, pipelines, binding, dispatch |
+| Kernel          | `__global__ void myKernel(...)`                          | `@compute @workgroup_size(...) fn main(...)`                |
