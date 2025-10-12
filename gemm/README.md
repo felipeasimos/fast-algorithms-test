@@ -40,3 +40,21 @@ A subtle point is that A and B share the `nk` dimension, so that is what we iter
 | Synchronization | `__syncthreads()`                                        | `workgroupBarrier()`                                        |
 | Host side       | CUDA runtime API (cudaMalloc, cudaMemcpy, etc.)          | wgpu API for creating buffers, pipelines, binding, dispatch |
 | Kernel          | `__global__ void myKernel(...)`                          | `@compute @workgroup_size(...) fn main(...)`                |
+
+* In WebGPU, bind groups are a way to manage memory without exposing the API to actual pointers
+   * Bind groups and their layouts can be reused
+* In WebGPU, to copy data from the GPU to the CPU we need a staging buffer:
+   * This is because the buffer must be "mapped" (accessible to the CPU) to have its contents copied to CPU memory
+      * in actuallity: a CPU-visible view is exposed (if allowed by the hardware) or a temporary host mirror (staging area) is allocated and synced later
+         1. `wgpuCommandEncoderCopyBufferToBuffer` copy from result buffer to staging buffer
+         2. `wgpuBufferMapAsync` request that the staging buffer in GPU memory gets copied to a implicit temporary host mirror
+            * waits for GPU writes to the buffer to finish first
+         3. `wgpuBufferGetConstMappedRange` is called to return a pointer to the temporary host mirror data
+   * can't have double-mapping/owning: a buffer can't be acessible both from the shader and the CPU at the same time
+      1. run shader, write result to GPU-owned buffer
+      2. CPU asks in async for GPU to copy content from result buffer to staging buffer
+      3. CPU maps staging buffer to its mirror host buffer
+      4. get pointer to mirror host
+   * The implementation chooses how to where to place the WGPU buffer: device-local VRAM or host-visible shared memory
+      * no copies are needed if already using shared memory (hardware-dependent)
+      * if using VRAM: temporary host mirror usedjj
