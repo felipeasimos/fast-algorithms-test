@@ -84,23 +84,23 @@ typedef struct {
 	GPUData gpu;
 } EvaluationSuite;
 
-int evaluate(EvaluationSuite suite, double* time) {
+int evaluate(EvaluationSuite* suite, double* time) {
 
-	memset(suite.C, 0x00, suite.ni * suite.nj * sizeof(dtype_t));
+	memset(suite->C, 0x00, suite->ni * suite->nj * sizeof(dtype_t));
 
 	double start = omp_get_wtime();
-	suite.f(&suite.gpu, suite.C, suite.A, suite.B, suite.ni, suite.nj, suite.nk);
+	suite->f(&suite->gpu, suite->C, suite->A, suite->B, suite->ni, suite->nj, suite->nk);
 	double stop = omp_get_wtime();
 	*time = stop - start;
 
 	int error_index = 0;
-	if(suite.check && (error_index = check(suite.C, suite.correct, suite.ni, suite.nj))) {
-		printf("C matrix is wrong for [%s]: correct[%u] != C[%u] (%f != %f)\n", suite.name, error_index, error_index, suite.correct[error_index], suite.C[error_index]);
+	if(suite->check && (error_index = check(suite->C, suite->correct, suite->ni, suite->nj))) {
+		printf("C matrix is wrong for [%s]: correct[%u] != C[%u] (%f != %f)\n", suite->name, error_index, error_index, suite->correct[error_index], suite->C[error_index]);
 		return 1;
 	}
 
-	if(!suite.quiet) {
-		printf("\t[%s]: %.2es\n", suite.name, *time);
+	if(!suite->quiet) {
+		printf("\t[%s]: %.2es\n", suite->name, *time);
 	}
 	return 0;
 }
@@ -126,7 +126,7 @@ EvaluationSuite createSuite(uint32_t ni, uint32_t nj, uint32_t nk, int check) {
 
 	if(check) {
 		double tmp;
-		evaluate(suite, &tmp);
+		evaluate(&suite, &tmp);
 	}
 	suite.check = check;
 	suite.C = malloc(ni * nj * sizeof(dtype_t));
@@ -148,14 +148,14 @@ int createPlotRow(EvaluationSuite suite, FILE* file) {
 
 	suite.f = gemm_rrc_blocked_without_packing;
 	suite.name = "BLOCKED";
-	if(evaluate(suite, &time)) {
+	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
 	fprintf(file, "%.2es,", time);
 
 	suite.f = gemm_rrc_blocked;
 	suite.name = "BLOCKED & PACKING";
-	if(evaluate(suite, &time)) {
+	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
 	fprintf(file, "%.2es,", time);
@@ -165,7 +165,7 @@ int createPlotRow(EvaluationSuite suite, FILE* file) {
 	convert_row_major_to_column_major(suite.correct, suite.ni, suite.nj);
 	convert_row_major_to_column_major(suite.A, suite.ni, suite.nk);
 	convert_column_major_to_row_major(suite.B, suite.nk, suite.nj);
-	if(evaluate(suite, &time)) {
+	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
 	convert_column_major_to_row_major(suite.correct, suite.ni, suite.nj);
@@ -175,30 +175,31 @@ int createPlotRow(EvaluationSuite suite, FILE* file) {
 
 	suite.f = gemm_rrc_to_rrr_blocked_avx;
 	suite.name = "BLOCKED & PACKING & AVX (RRC to RRR packing)";
-	if(evaluate(suite, &time)) {
+	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
 	fprintf(file, "%.2es,", time);
 
 	suite.f = gemm_rrc_blocked_avx;
 	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction)";
-	if(evaluate(suite, &time)) {
+	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
 	fprintf(file, "%.2es,", time);
 
 	suite.f = gemm_rrc_blocked_avx_and_omp;
 	suite.name = "BLOCKED & PACKING & AVX (RRC with reduction) & OMP";
-	if(evaluate(suite, &time)) {
+	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
-	fprintf(file, "%.2es\n", time);
+	fprintf(file, "%.2es,", time);
 
 	suite.f = (void (*)(void *, dtype_t *, dtype_t *, dtype_t *, uint32_t, uint32_t, uint32_t))gemm_gpu;
 	suite.name = "GPU";
-	if(evaluate(suite, &time)) {
+	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
+	fprintf(file, "%.2es,", suite.gpu.time);
 	fprintf(file, "%.2es\n", time);
 
 	return 0;
@@ -213,13 +214,13 @@ int createPlot(char* output_path) {
 		error("Error when opening file\n");
 		goto defer;
 	}
-	fprintf(f, "N,BLOCKED,BLOCKED & PACKING,BLOCKED & PACKING & AVX (CCR),BLOCKED & PACKING & AVX (RRC to RRR packing),BLOCKED & PACKING & AVX (RRC with reduction),BLOCKED & PACKING & AVX (RRC with reduction) & OMP");
+	fprintf(f, "N,BLOCKED,BLOCKED & PACKING,BLOCKED & PACKING & AVX (CCR),BLOCKED & PACKING & AVX (RRC to RRR packing),BLOCKED & PACKING & AVX (RRC with reduction),BLOCKED & PACKING & AVX (RRC with reduction) & OMP,GPU,GPU+Copies");
 	#ifdef DEBUG
 	int check = 1;
 	#else
 	int check = 0;
 	#endif
-	for(uint32_t n = 1; n < 5000; n+=100) {
+	for(uint32_t n = 1; n < 100000; n *= 2) {
 		suite = createSuite(n, n, n, check);
 		fprintf(f, "%u,", n);
 		if(createPlotRow(suite, f)) {

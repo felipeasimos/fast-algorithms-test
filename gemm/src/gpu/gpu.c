@@ -72,6 +72,7 @@ GPUData initGPUData(void) {
 		.device = device,
 		.adapter = adapter,
 		.instance = instance,
+		.queue = queue,
 	};
 	return data;
 }
