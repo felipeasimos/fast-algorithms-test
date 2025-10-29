@@ -49,7 +49,15 @@ A subtle point is that A and B share the `nk` dimension, so that is what we iter
    * CCR: vectorize an A column, broadcast B and partially compute a column of C
       * faster, iterate over `k` in the innermost loop for B and A
 
-### CUDA vs WebGPU
+### WGPU
+
+#### Limitations
+
+* As per the spec, WebGPU can only bing  maximum buffer size is at least 256 MB
+* However, the maximum binded buffer size is at least 128 MB
+   * so we actually hit a limit on the matrix that can be copied over in one buffer pretty fast
+
+#### CUDA vs WebGPU
 
 
 | Concept         | CUDA                                                     | WGPU (WebGPU / wgpu-native)                                 |

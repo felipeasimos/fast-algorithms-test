@@ -218,13 +218,13 @@ int createPlot(char* output_path) {
 		error("Error when opening file\n");
 		goto defer;
 	}
-	fprintf(f, "N,BLOCKED,BLOCKED & PACKING,BLOCKED & PACKING & AVX (CCR),BLOCKED & PACKING & AVX (RRC to RRR packing),BLOCKED & PACKING & AVX (RRC with reduction),BLOCKED & PACKING & AVX (RRC with reduction) & OMP,GPU,GPU+Copies");
+	fprintf(f, "N,BLOCKED,BLOCKED & PACKING,BLOCKED & PACKING & AVX (CCR),BLOCKED & PACKING & AVX (RRC to RRR packing),BLOCKED & PACKING & AVX (RRC with reduction),BLOCKED & PACKING & AVX (RRC with reduction) & OMP,GPU,GPU+Copies\n");
 	#ifdef DEBUG
 	int check = 1;
 	#else
 	int check = 0;
 	#endif
-	for(uint32_t n = 1; n < 100000; n *= 2) {
+	for(uint32_t n = 1; n <= 4096; n += (n + 100) % 100) {
 		suite = createSuite(n, n, n, check);
 		fprintf(f, "%u,", n);
 		if(createPlotRow(suite, f)) {
