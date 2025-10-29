@@ -1,4 +1,4 @@
-.PHONY: test lib debug build run coverage avg loc compile_flags docs init clean clean-objs help
+.PHONY: test lib debug build run coverage avg loc compile_flags docs init clean clean-objs help plot
 help:
 	# This Makefile can produce a dynamic library, test binary and main executable for C/C++ projects.
 
@@ -199,3 +199,5 @@ clean:
 # clean build/objs/ to avoid debugging objects with release flags later or build for release with debug flags
 clean-objs:
 	@-rm -rf $(OBJ_DIR)
+plot:
+	./plot.sh

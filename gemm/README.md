@@ -1,4 +1,26 @@
-# GEMM
+## GEMM
+
+## How to run the experiments
+
+Release mode:
+
+```
+make run 
+```
+
+Debug mode (valgrind needed):
+
+```
+make debug
+```
+
+## Plotting Results
+
+```
+./plot.sh
+```
+
+## Notes
 
 General Matrix Multiplication.
 
@@ -58,3 +80,7 @@ A subtle point is that A and B share the `nk` dimension, so that is what we iter
    * The implementation chooses how to where to place the WGPU buffer: device-local VRAM or host-visible shared memory
       * no copies are needed if already using shared memory (hardware-dependent)
       * if using VRAM: temporary host mirror usedjj
+* Between AMD, NVIDIA and Intel, AMD has the bigger "warp-size": 64
+   * Use multiple of 64 as the total workgroup size for maximum cross-platform efficiency
+* Between AMD, NVIDIA and Intel, the number of threads per block varies from 256 to 1024
+   * Use a multiple of 1024 total threads for maximum corss-platform efficiency

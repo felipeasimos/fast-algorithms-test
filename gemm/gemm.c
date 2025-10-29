@@ -96,6 +96,10 @@ int evaluate(EvaluationSuite* suite, double* time) {
 	int error_index = 0;
 	if(suite->check && (error_index = check(suite->C, suite->correct, suite->ni, suite->nj))) {
 		printf("C matrix is wrong for [%s]: correct[%u] != C[%u] (%f != %f)\n", suite->name, error_index, error_index, suite->correct[error_index], suite->C[error_index]);
+		printf("correct:\n");
+		print_matrix(suite->correct, suite->ni, suite->nj);
+		printf("C:\n");
+		print_matrix(suite->C, suite->ni, suite->nj);
 		return 1;
 	}
 
@@ -145,7 +149,6 @@ void freeSuite(EvaluationSuite suite) {
 int createPlotRow(EvaluationSuite suite, FILE* file) {
 
 	double time = 0.0F;
-
 	suite.f = gemm_rrc_blocked_without_packing;
 	suite.name = "BLOCKED";
 	if(evaluate(&suite, &time)) {
@@ -195,10 +198,11 @@ int createPlotRow(EvaluationSuite suite, FILE* file) {
 	fprintf(file, "%.2es,", time);
 
 	suite.f = (void (*)(void *, dtype_t *, dtype_t *, dtype_t *, uint32_t, uint32_t, uint32_t))gemm_gpu;
-	suite.name = "GPU";
+	suite.name = "GPU + Copies";
 	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
+	printf("\t[GPU] %.2es\n", suite.gpu.time);
 	fprintf(file, "%.2es,", suite.gpu.time);
 	fprintf(file, "%.2es\n", time);
 
@@ -238,28 +242,8 @@ defer:
 	return 1;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
 	srand(0);
-
-	#ifdef DEBUG
-		uint32_t ni = 129;
-		uint32_t nj = 129;
-		uint32_t nk = 129;
-	#else
-		uint32_t ni = 1028;
-		uint32_t nj = 1028;
-		uint32_t nk = 1028;
-	#endif
-
-	if(argc > 1 && sscanf(argv[0], "%u", &ni) != 1) {
-		error("invalid ni");
-	}
-	if(argc > 2 && sscanf(argv[1], "%u", &nj) != 1) {
-		error("invalid nj");
-	}
-	if(argc > 3 && sscanf(argv[1], "%u", &nk) != 1) {
-		error("invalid nk");
-	}
 
 	return createPlot("plot.csv");
 }

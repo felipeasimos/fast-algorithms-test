@@ -11,6 +11,11 @@ typedef struct {
 	int* signal;
 } ReadbackData;
 
+#define BLOCKSIZE 16
+#define _QUOTE(arg) #arg
+#define STR(arg) _QUOTE(arg)
+#define BLOCKSIZE_STR STR(BLOCKSIZE)
+
 void onBufferMapped(WGPUMapAsyncStatus status, WGPUStringView message, void* userdata1, void* _) {
 	ReadbackData* data = (ReadbackData*)userdata1;
 	if (status != WGPUMapAsyncStatus_Success) {
@@ -54,13 +59,13 @@ void gemm_gpu(GPUData* gpu, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uin
 		.size = c_size,
 		.usage = (WGPUBufferUsage)(WGPUBufferUsage_CopySrc | WGPUBufferUsage_Storage),
 		.label = {"c_buffer", WGPU_STRLEN},
-		.mappedAtCreation = 0, // make sure the buffer is zero-initialized
+		.mappedAtCreation = 0,
 	});
 	WGPUBuffer staging_buffer = wgpuDeviceCreateBuffer(gpu->device, &(WGPUBufferDescriptor){
 		.size = c_size,
 		.usage = (WGPUBufferUsage)(WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead),
 		.label = {"staging_buffer", WGPU_STRLEN},
-		.mappedAtCreation = 0, // make sure the buffer is zero-initialized
+		.mappedAtCreation = 0, // map it later to copy to host memory
 	});
 
 	// Upload A and B via Queue::writeBuffer (uses an internal staging buffer)
@@ -78,28 +83,31 @@ void gemm_gpu(GPUData* gpu, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uin
 	WGPUBuffer dims_buf = wgpuDeviceCreateBuffer(gpu->device, &dims_desc);
 	wgpuQueueWriteBuffer(gpu->queue, dims_buf, 0, dims_data, sizeof(dims_data));
 
-	// WGSL compute shader (simple naive matmul)
+	// https://webgpufundamentals.org/webgpu/lessons/webgpu-compute-shaders.html
 	const char* wgsl_code = 
-		"struct Dims { n: u32, m: u32, k: u32, pad: u32, };\n"
+		"struct Dims { ni: u32, nj: u32, nk: u32, pad: u32, };\n"
 		"@group(0) @binding(0) var<storage, read> A: array<f32>;\n"
 		"@group(0) @binding(1) var<storage, read> B: array<f32>;\n"
 		"@group(0) @binding(2) var<storage, read_write> C: array<f32>;\n"
 		"@group(0) @binding(3) var<uniform> dims: Dims;\n"
-		"@compute @workgroup_size(16,16)\n"
-		"fn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n"
-		"  let row = gid.y;\n"
-		"  let col = gid.x;\n"
-		"  if (row >= dims.n || col >= dims.m) { return; }\n"
-		"  var sum: f32 = 0.0;\n"
-		"  var k: u32 = 0u;\n"
-		"  loop {\n"
-		"    if (k >= dims.k) { break; }\n"
-		"    let a = A[row * dims.k + k];\n"
-		"    let b = B[k * dims.m + col];\n"
-		"    sum = sum + a * b;\n"
-		"    k = k + 1u;\n"
+		"var<workgroup> block_a: array<array<f32, " BLOCKSIZE_STR ">, " BLOCKSIZE_STR ">;\n"
+		"var<workgroup> block_b: array<array<f32, " BLOCKSIZE_STR ">, " BLOCKSIZE_STR ">;\n"
+		"@compute @workgroup_size(" BLOCKSIZE_STR ", " BLOCKSIZE_STR ")\n"
+		"fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {\n" 
+		"  var acc: f32 = 0.0;\n"
+		"  for(var b = 0u; b < dims.nk; b += " BLOCKSIZE_STR ") {\n"
+		// load in shared (workgroup) memory
+		"    block_a[lid.y][lid.x] = A[gid.y * dims.nk + b + lid.x];\n"
+		"    block_b[lid.y][lid.x] = B[(b + lid.y) + gid.x * dims.nk];\n"
+		"    var K = min(dims.nk - b, " BLOCKSIZE_STR ");\n"
+		"    workgroupBarrier();\n"
+		// compute using tiles
+		"    for(var k = 0u; k < K; k++) {\n"
+		"      acc += block_a[lid.y][k] * block_b[k][lid.x];\n"
+		"    }\n"
+		"    workgroupBarrier();\n"
 		"  }\n"
-		"  C[row * dims.m + col] = sum;\n"
+		"  C[gid.y * dims.nj + gid.x] += acc;\n"
 		"}\n";
 
 	WGPUShaderModule shader = wgpuDeviceCreateShaderModule(
@@ -185,7 +193,9 @@ void gemm_gpu(GPUData* gpu, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uin
 	);
 	wgpuComputePassEncoderSetPipeline(compute_pass_encoder, compute_pipeline);
 	wgpuComputePassEncoderSetBindGroup(compute_pass_encoder, 0, bind_group, 0, NULL);
-	wgpuComputePassEncoderDispatchWorkgroups(compute_pass_encoder, 256, 1, 1);
+	uint32_t groups_x = (nj + BLOCKSIZE - 1) / BLOCKSIZE;
+	uint32_t groups_y = (ni + BLOCKSIZE - 1) / BLOCKSIZE;
+	wgpuComputePassEncoderDispatchWorkgroups(compute_pass_encoder, groups_x, groups_y, 1);
 	wgpuComputePassEncoderEnd(compute_pass_encoder);
 	wgpuComputePassEncoderRelease(compute_pass_encoder);
 	wgpuCommandEncoderCopyBufferToBuffer(command_encoder, c_buf, 0, staging_buffer, 0, c_size);
@@ -221,7 +231,6 @@ void gemm_gpu(GPUData* gpu, dtype_t* C, dtype_t* A, dtype_t* B, uint32_t ni, uin
 		const void* mapped_data = wgpuBufferGetConstMappedRange(staging_buffer, 0, c_size);
 		memcpy(C, mapped_data, c_size);
 	}
-	wgpuBufferUnmap(staging_buffer);
 	wgpuBufferRelease(a_buf);
 	wgpuBufferRelease(b_buf);
 	wgpuBufferRelease(c_buf);
