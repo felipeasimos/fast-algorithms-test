@@ -198,11 +198,11 @@ int createPlotRow(EvaluationSuite suite, FILE* file) {
 	fprintf(file, "%.2es,", time);
 
 	suite.f = (void (*)(void *, dtype_t *, dtype_t *, dtype_t *, uint32_t, uint32_t, uint32_t))gemm_gpu;
-	suite.name = "GPU + Copies";
+	suite.name = "GPU (WGPU) + Copies";
 	if(evaluate(&suite, &time)) {
 		goto defer;
 	}
-	printf("\t[GPU] %.2es\n", suite.gpu.time);
+	printf("\t[GPU (WGPU)] %.2es\n", suite.gpu.time);
 	fprintf(file, "%.2es,", suite.gpu.time);
 	fprintf(file, "%.2es\n", time);
 

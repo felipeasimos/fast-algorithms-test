@@ -1,0 +1,21 @@
+.{
+    .name = .svdag,
+    .version = "0.0.0",
+    .fingerprint = 0xd6ea5fa30d84d006, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .vulkan = .{
+            .url = "https://github.com/Snektron/vulkan-zig/archive/f879074293f0e2f718c93fd19cc0a96260a3aa52.tar.gz",
+            .hash = "vulkan-0.0.0-r7Ytx6hBAwBUnt0XA-uOkR2hda4fAHFhQITNTgJpnFkY",
+        },
+        .wgpu_native_zig = .{
+            .url = "https://github.com/felipeasimos/wgpu_native_zig/archive/c7832a20edcd560c4484a3a339371d5683005837.tar.gz",
+            .hash = "wgpu_native_zig-6.5.0-B9jeDAxiAwDN6l3ODQoM4Cn7V-2Ofk9N-dFMUQ12tgtK",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
